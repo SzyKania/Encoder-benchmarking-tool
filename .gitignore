@@ -1,0 +1,8 @@
+test_sequences/
+test_results/
+sequence_workspaces/
+.legacy_non_code
+todo.txt
+workbench.py
+__pycache__
+test_sequences_lists.py
