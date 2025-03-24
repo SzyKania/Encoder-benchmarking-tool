@@ -3,31 +3,17 @@ import copy
 import pickle
 import subprocess
 
-
 from datetime import datetime
 from fractions import Fraction
-from os.path import getsize
 
 from auxillary import crf_ints_to_strings, float_round_str, parse_metrics
 from file_operations import FileInfo, clean_workspace, create_folder_tree, get_file_info
-from config import TestConfig, testconfig, LoadConfig, loadconfig, PlotConfig, plotconfig
+from configs.test_config import TestConfig, testconfig
+from configs.load_config import LoadConfig, loadconfig
+from configs.result_config import ResultConfig, resultconfig
 from metrics import calculate_bd_rate, calculate_vmaf_scores, generate_xlsx_report, plot_class_aggregated_results, plot_frametime_aggregated_results, plot_results, print_statistics
 
 DEFAULT_FFMPEG_ARGS = ['ffmpeg', '-hide_banner', '-y', '-benchmark']
-
-FFMPEG_CODECS_LIST = ['libx264', 'libx265', 'h264_amf','hevc_amf',
-                      'libsvtav1', 'libvpx-vp9', 'libvvenc']
-
-FFMPEG_CRF_ARGS_DICT = {
-    'libx264': ["-crf"],
-    'h264_amf': ["-rc", "qvbr", "-qvbr_quality_level"],
-    'libx265': ["-crf"],
-    'hevc_amf': ["-rc", "qvbr", "-qvbr_quality_level"],
-    'libsvtav1': ["-crf"],
-    'libvpx-vp9': ["-b:v", "0", "-crf"],
-    'libvvenc': ["-qpa", "1", "-qp"]
-}
-
 
 class FilesAggregatedResults:
     def __init__(self, codec, rtime_avg, vmaf_avg, bitrate_avg, crf, psnr_hvs = None, ssim_avg = None, frametime_avg = None):
@@ -121,7 +107,7 @@ def encode_video_crf(fInfo: FileInfo, codec, codecargs=[], verbose=False, thread
     if verbose:
         print("#" * 40 + codec + " COMPLETE" + "#" * 40)
 
-    return metrics, getsize(output_filename)
+    return metrics, os.path.getsize(output_filename)
 
 
 def decode_encoded_videos(basename, codecs, verbose=False):
@@ -143,7 +129,7 @@ def decode_encoded_videos(basename, codecs, verbose=False):
     print()
 
 
-def run_tests_crf(fInfo: FileInfo, codecs, codecargs, verbosity):
+def run_tests_crf(fInfo: FileInfo, codecs, codecargs, verbosity, resultconfig: ResultConfig):
 
     framecount = int(fInfo.framecount)    
 
@@ -158,7 +144,8 @@ def run_tests_crf(fInfo: FileInfo, codecs, codecargs, verbosity):
         timings, maxrss = parse_metrics(metrics, verbose=verbosity)
         result = EncodingResults(codec, timings[2], maxrss, framecount, filesize, fInfo.filesize, fInfo.framerate, codecargs[codec][-1])
         results.append(result)
-        print(result)
+        if resultconfig.print_per_encode_statistics:
+            print(result)
     print()
 
     decode_encoded_videos(fInfo.basename, codecs, verbose=verbosity)
@@ -168,8 +155,9 @@ def run_tests_crf(fInfo: FileInfo, codecs, codecargs, verbosity):
 
     print_statistics(results, codecs, vmaf_scores)
 
-    generate_xlsx_report(fInfo.basename, framecount,
-                         fInfo.filesize, results, vmaf_scores, codecargs)
+    if resultconfig.per_file_xlsx_report:
+        generate_xlsx_report(fInfo.basename, framecount,
+                            fInfo.filesize, results, vmaf_scores, codecargs)
 
     os.chdir("..\\..")
 
@@ -178,43 +166,33 @@ def run_tests_crf(fInfo: FileInfo, codecs, codecargs, verbosity):
     return results
 
 
-def run_crf_test_batch(testconfig: TestConfig):
+def run_crf_test_batch(testconfig: TestConfig, resultconfig: ResultConfig):
     results_crfs_files = {}
     for filename in testconfig.filenames:
 
         results_crfs = []
         fileinfo = get_file_info(filename)
 
-        ffmpeg_crf_args_dict = dict.fromkeys(testconfig.codecs)
-        for codec in testconfig.codecs:
-            ffmpeg_crf_args_dict[codec] = crf_ints_to_strings(testconfig.crf_tables, codec)
-
-        for i in range(testconfig.crf_count):
-            codecargs_copy = copy.deepcopy(testconfig.codec_args)
-            for codec in codecargs_copy:
-                codecargs_copy[codec].extend(FFMPEG_CRF_ARGS_DICT[codec])
-                codecargs_copy[codec].append(ffmpeg_crf_args_dict[codec][i])
-
-            
-            results = run_tests_crf(fileinfo, testconfig.codecs, codecargs_copy, testconfig.verbosity)
+        for i in range(len(testconfig.codec_args)):
+            results = run_tests_crf(fileinfo, testconfig.codecs, testconfig.codec_args[i], testconfig.verbosity, resultconfig)
             results_crfs.append(results)
 
         results_crfs_files[filename] = results_crfs
 
+        if resultconfig.per_file_pickle_dump:
+            results_filename = "test_results\\" + fileinfo.basename + \
+            "_" + datetime.now().strftime("%Y%m%d-%H%M%S") + ".pkl"
 
-        results_filename = "test_results\\" + fileinfo.basename + \
-        "_" + datetime.now().strftime("%Y%m%d-%H%M%S") + ".pkl"
+            with open(results_filename, 'wb') as file:
+                results_tuple = (results_crfs, testconfig)
+                pickle.dump(results_tuple, file)
 
-
+    if resultconfig.per_batch_pickle_dump:
+        results_filename = "test_results\\" + testconfig.test_name + "_tuple_" \
+                            + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pkl"
         with open(results_filename, 'wb') as file:
-            results_tuple = (results_crfs, testconfig)
+            results_tuple = (results_crfs_files, testconfig)
             pickle.dump(results_tuple, file)
-
-    results_filename = "test_results\\" + testconfig.test_name + "_tuple_" \
-                        + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pkl"
-    with open(results_filename, 'wb') as file:
-        results_tuple = (results_crfs_files, testconfig)
-        pickle.dump(results_tuple, file)
         
     return results_crfs_files
 
@@ -274,23 +252,23 @@ def aggregate_crf_test_batch_results(results_crfs_files, crf_count, codecs):
     return aggregated_crfs_results
 
 
-def load_results(loadconfig: LoadConfig, plotconfig: PlotConfig):
+def load_results(loadconfig: LoadConfig, resultconfig: ResultConfig):
     with open("test_results\\" + loadconfig.load_filename, 'rb') as file:
         loaded_results = pickle.load(file)
     results_crfs_files = loaded_results[0]
     testconfig = loaded_results[1]
     if loadconfig.load_single_test:
         acr = aggregate_crf_test_batch_results()
-        plot_results(results_crfs_files, testconfig.codecs, loadconfig.load_filename[:-4], plotconfig)
+        plot_results(results_crfs_files, testconfig.codecs, loadconfig.load_filename[:-4], resultconfig)
         quit()
     acr = aggregate_crf_test_batch_results(results_crfs_files,
                                 testconfig.crf_count, testconfig.codecs)
-    if plotconfig.print_bd_rates or plotconfig.csv_bd_rates:
-        calculate_bd_rate(testconfig, acr, plotconfig)
+    if resultconfig.print_bd_rates or resultconfig.csv_bd_rates:
+        calculate_bd_rate(testconfig, acr, resultconfig)
 
     plot_frametime_aggregated_results(acr, testconfig.codecs)
 
-    plot_class_aggregated_results(acr, testconfig.codecs, testconfig.test_name, plotconfig)
+    plot_class_aggregated_results(acr, testconfig.codecs, testconfig.test_name, resultconfig)
     return results_crfs_files, testconfig
 
 
@@ -310,7 +288,7 @@ def combine_crf_results(pkls_to_restore):
     return results_crfs_files, testconfig
 
 
-def loading_handler(loadconfig: LoadConfig, plotconfig: PlotConfig):
+def loading_handler(loadconfig: LoadConfig, resultconfig: ResultConfig):
     if loadconfig.restore_results:
         print("Reconstructing batch test results from following files:", loadconfig.pkls_to_restore)
         results_crfs_files, testconfig = combine_crf_results(loadconfig.pkls_to_restore)
@@ -323,19 +301,19 @@ def loading_handler(loadconfig: LoadConfig, plotconfig: PlotConfig):
         print("Reconstructed results saved as", results_filename)
 
     elif loadconfig.load_results:
-        results_crfs_files, testconfig = load_results(loadconfig, plotconfig)
+        results_crfs_files, testconfig = load_results(loadconfig, resultconfig)
 
 
 if __name__ == "__main__":
     if loadconfig.restore_results or loadconfig.load_results:
-        loading_handler(loadconfig, plotconfig)
+        loading_handler(loadconfig, resultconfig)
     else:
-        results_crfs_files = run_crf_test_batch(testconfig)
-        if testconfig.crf_count > 3 and (plotconfig.show_plot or plotconfig.save_plot):
+        results_crfs_files = run_crf_test_batch(testconfig, resultconfig)
+        if testconfig.crf_count > 3 and (resultconfig.show_plot or resultconfig.save_plot):
             for file in testconfig.filenames:
                 plot_results(results_crfs_files[file], testconfig.codecs, file,
-                                plotconfig)
+                                resultconfig)
             acr = aggregate_crf_test_batch_results(results_crfs_files,
                                 testconfig.crf_count, testconfig.codecs)
             plot_class_aggregated_results(acr, testconfig.codecs, testconfig.test_name,
-                                    plotconfig)
+                                    resultconfig)

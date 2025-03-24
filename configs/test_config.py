@@ -1,4 +1,17 @@
-from test_sequences_lists import *
+from .test_sequences_lists import *
+
+FFMPEG_CODECS_LIST = ['libx264', 'libx265', 'h264_amf','hevc_amf',
+                      'libsvtav1', 'libvpx-vp9', 'libvvenc']
+
+FFMPEG_CRF_ARGS = {
+    'libx264': ["-crf"],
+    'h264_amf': ["-rc", "qvbr", "-qvbr_quality_level"],
+    'libx265': ["-crf"],
+    'hevc_amf': ["-rc", "qvbr", "-qvbr_quality_level"],
+    'libsvtav1': ["-crf"],
+    'libvpx-vp9': ["-b:v", "0", "-crf"],
+    'libvvenc': ["-qpa", "1", "-qp"]
+}
 
 class TestConfig:
     def __init__(self, codecs, filenames, testname = "NoName", verbosity = False,
@@ -9,75 +22,36 @@ class TestConfig:
         self.verbosity = verbosity
         self.crf_tables = crftables
         self.crf_count = len(self.crf_tables[self.codecs[0]])
-        self.codec_args = codecargs
         self.bitrates = bitrates
         self.runs = runs
+        self.codec_args = self.str_crf_to_ffmpeg_crf_args(codecargs)
+
     def __str__(self):
         fstrings = {'s1': self.codecs, 's2': self.codec_args, 's3': self.crf_tables,
                      's4': self.bitrates, 's5': self.filenames}
         return "Codecs: {s1}\nCodecargs: {s2}\nCrftables: {s3}\nBitrates:  {s4}\nFilenames: {s5}".format(**fstrings)
-
-class LoadConfig:
-    def __init__(self, load_results = False, load_single_test = False, 
-                 load_filename = None, restore_results = False, pkls_to_restore = None):
-        self.load_results = load_results
-        self.load_single_test = load_single_test
-        self.load_filename = load_filename
-        self.restore_results = restore_results
-        self.pkls_to_restore = pkls_to_restore
-
-class PlotConfig:
-    def __init__(self, save_plot = False, show_plot = False, print_bd_rates = False,
-                  csv_bd_rates = False, include_vmaf = False, include_ssim = False,
-                  include_psnr_hvs = False):
-        self.save_plot = save_plot
-        self.show_plot = show_plot
-        self.print_bd_rates = print_bd_rates
-        self.csv_bd_rates = csv_bd_rates
-        self.include_vmaf = include_vmaf
-        self.include_ssim = include_ssim
-        self.include_psnr_hvs = include_psnr_hvs
-        self.metrics_str = []
-        if self.include_vmaf: self.metrics_str.append("VMAF")
-        if self.include_ssim: self.metrics_str.append("SSIM")
-        if self.include_psnr_hvs: self.metrics_str.append("PSNR_HVS")
-
+    
+    def str_crf_to_ffmpeg_crf_args(self, codecargs):
+        ffmpeg_crf_args = []
+        for codec in self.codecs:
+            for i in range(len(self.crf_tables[codec])):
+                preset = codecargs[codec]
+                crf_mode = FFMPEG_CRF_ARGS[codec]
+                crf_value = str(self.crf_tables[codec][i])
+                command = preset + crf_mode + [crf_value]
+                if len(ffmpeg_crf_args) > i:
+                    ffmpeg_crf_args[i][codec] = command
+                else:
+                    ffmpeg_crf_args.append({codec: command})
+        return ffmpeg_crf_args
+    
 #region############# GENERAL PARAMETERS ####################
 
 testname = "vidyo"
-filenames = ['vidyo1_720p_60fps.y4m']
+filenames = ['vidyo1_720p_60fps.y4m', 'Vidyo3_1280x720p_60fps.y4m']
 verbosity = False
 encoding_speed = 2 #0 = slowest (vvc slow) 1 = default (vvc fast) 2 = fastest
 runs = 1
-#endregion
-#region############# RESULTS PARAMETERS ####################
-
-save_plot = False
-show_plot = False
-print_bd_rates = True
-csv_bd_rates = True
-include_vmaf = False
-include_ssim = True
-include_psnr_hvs = True
-#endregion
-#region################ LOAD RESULTS #######################
-
-load_results = True
-load_single_test = False
-load_filename = "a1_class\\a1_class_tuple_20250123_160417"
-load_filename = "vidyo_tuple_20250314_184739"
-
-load_filename += ".pkl"
-
-#endregion
-#region############# BATCH RESTORATION #####################
-
-restore_results = False
-pkls_to_restore = []
-# pkls_to_restore.append("PierSeaSide_3840x2160_2997fps_10bit_420_v2_20250123-125211.pkl")
-# pkls_to_restore.append("NocturneDance_3840x2160p_10bit_60fps_20250123-110822.pkl")
-
-
 #endregion
 #region################ RATE CONTROL #######################
 
@@ -114,7 +88,7 @@ else:
 
 codecs = []
 # codecs.append('libvvenc')
-codecs.append('libsvtav1')
+# codecs.append('libsvtav1')
 codecs.append('libx265')
 # codecs.append('libvpx-vp9')
 codecs.append('libx264')
@@ -122,7 +96,7 @@ codecs.append('libx264')
 #endregion
 #region################### PRESETS #########################
 
-if encoding_speed == 0:   #slowest
+if encoding_speed == 0:   #slowest non-placebo (libvvenc slow)
     codecargs = {
         'libx264': ['-preset', 'veryslow'],
         'h264_amf': ['-preset', '2'],
@@ -160,17 +134,13 @@ else:
 
 
 codecargs_filtered = {}
+crf_tables_filtered = {}
 for codec in codecargs:
     if codec in codecs:
         codecargs_filtered[codec] = codecargs[codec]
+        crf_tables_filtered[codec] = codeccrftables[codec]
 
 #endregion
-#region################## EXECUTION ########################
 
 testconfig = TestConfig(codecs, filenames, testname, verbosity, codecargs_filtered,
-                         codeccrftables, target_bitrates)
-
-loadconfig = LoadConfig(load_results, load_single_test, load_filename, restore_results, pkls_to_restore)
-
-plotconfig = PlotConfig(save_plot, show_plot, print_bd_rates, csv_bd_rates, include_vmaf, include_ssim, include_psnr_hvs)
-#endregion
+                         crf_tables_filtered, target_bitrates)

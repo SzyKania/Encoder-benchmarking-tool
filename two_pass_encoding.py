@@ -4,6 +4,7 @@
 from codec_benchmarking_tool import *
 from file_operations import FileInfo
 from metrics import generate_xlsx_report, print_statistics
+import os
 
 def encode_video_two_pass(fInfo: FileInfo, codec, bitrate, codecargs=[], verbose=False, threadcount=12):
     if verbose:
@@ -94,7 +95,7 @@ def encode_video_two_pass(fInfo: FileInfo, codec, bitrate, codecargs=[], verbose
                 metrics.append(line)
         elif line.startswith('bench'):
             metrics.append(line)
-    metrics.append(getsize(output_filename))
+    metrics.append(os.path.getsize(output_filename))
 
     if verbose:
         print("#" * 40 + codec + " COMPLETE" + "#" * 40)

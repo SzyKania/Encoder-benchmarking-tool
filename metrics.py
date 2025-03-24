@@ -9,9 +9,9 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import Akima1DInterpolator
 
 from auxillary import float_round_str, log_ssim, log_vmaf
-from config import TestConfig
+from configs.test_config import TestConfig
 from file_operations import FileInfo
-from config import PlotConfig
+from configs.result_config import ResultConfig
 
 
 class VMAFScores:
@@ -32,7 +32,7 @@ class VMAFScores:
             " VMAF: " + float_round_str(self.vmaf, 3)
 
 
-def plot_results(results_bitrates, codecs, filename, plotconfig: PlotConfig, cpu_only=True, show_annotations=False):
+def plot_results(results_bitrates, codecs, filename, resultconfig: ResultConfig, cpu_only=True, show_annotations=False):
     results_codec = {}
     for codec in codecs:
         results_codec[codec] = []
@@ -50,7 +50,7 @@ def plot_results(results_bitrates, codecs, filename, plotconfig: PlotConfig, cpu
 
     plot_time = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    for metric in plotconfig.metrics_str:
+    for metric in resultconfig.metrics_str:
         plt.clf()
         for i, codec in enumerate(filtered_codecs):
             x = np.array([math.log(result.bitrate*1000) for result in results_codec[codec]])
@@ -84,11 +84,11 @@ def plot_results(results_bitrates, codecs, filename, plotconfig: PlotConfig, cpu
         plt.title(filename)
         plt.legend()
 
-        if plotconfig.save_plot:
+        if resultconfig.save_plot:
             plot_filename = "test_results\\" + filename + \
             "_" + plot_time + "_" + metric + ".png"
             plt.savefig(plot_filename)
-        if plotconfig.show_plot:
+        if resultconfig.show_plot:
             plt.show()
 
 
@@ -143,7 +143,7 @@ def plot_frametime_aggregated_results(aggregated_crfs_results, codecs):
 
 
 def plot_class_aggregated_results(aggregated_crfs_results, codecs, sequences_class_name,
-                                  plotconfig: PlotConfig, cpu_only=True, show_annotations=False):
+                                  resultconfig: ResultConfig, cpu_only=True, show_annotations=False):
     results_codec = {}
     for codec in codecs:
         results_codec[codec] = []
@@ -162,7 +162,7 @@ def plot_class_aggregated_results(aggregated_crfs_results, codecs, sequences_cla
         filtered_codecs = codecs
 
     plot_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-    for metric in plotconfig.metrics_str:
+    for metric in resultconfig.metrics_str:
         plt.clf()
         for i, codec in enumerate(filtered_codecs):
 
@@ -191,11 +191,11 @@ def plot_class_aggregated_results(aggregated_crfs_results, codecs, sequences_cla
         plt.title(sequences_class_name)
         plt.legend()
 
-        if plotconfig.save_plot:
+        if resultconfig.save_plot:
             plot_filename = "test_results\\" + sequences_class_name + \
             "_" + plot_time + "_" + metric + "_" ".png"
             plt.savefig(plot_filename)
-        if plotconfig.show_plot:
+        if resultconfig.show_plot:
             plt.show()
 
 
@@ -216,14 +216,14 @@ def print_aggregated_results(aggregated_crfs_results, codecs):
         print()
 
 
-def print_bd_rates(bd_rates_metric_codecs, metric, testconfig, plotconfig: PlotConfig, bd_filename, bd_psnr = False):
+def print_bd_rates(bd_rates_metric_codecs, metric, testconfig, resultconfig: ResultConfig, bd_filename, bd_psnr = False):
 
     if bd_psnr:
         method = "BD-PSNR"
     else:
         method = "BD-RATE"
 
-    if plotconfig.print_bd_rates:
+    if resultconfig.print_bd_rates:
         print("Testconfigname= ", testconfig.test_name, "\t", metric, " ", method, sep="")
         print(" "*16, end="")
         for codec in bd_rates_metric_codecs:
@@ -233,7 +233,7 @@ def print_bd_rates(bd_rates_metric_codecs, metric, testconfig, plotconfig: PlotC
             print(codec.ljust(15), *[bd_rate.ljust(15) if bd_rate=="X" else "{0:0.02f}%".format(bd_rate).ljust(15)for bd_rate in bd_rates_metric_codecs[codec]])
         print()
 
-    if plotconfig.csv_bd_rates:
+    if resultconfig.csv_bd_rates:
 
         with open(bd_filename, 'a') as f:
             print("Testconfigname", testconfig.test_name, metric+" "+method, sep=";", file=f)
@@ -245,7 +245,7 @@ def print_bd_rates(bd_rates_metric_codecs, metric, testconfig, plotconfig: PlotC
                 print(codec, *[bd_rate if bd_rate=="X" else "{0:0.02f}%".format(bd_rate)for bd_rate in bd_rates_metric_codecs[codec]], sep=";", file=f)
             print(file=f)
 
-def calculate_bd_rate(testconfig: TestConfig, results, plotconfig: PlotConfig, bd_psnr = False):
+def calculate_bd_rate(testconfig: TestConfig, results, resultconfig: ResultConfig, bd_psnr = False):
 
     results_codecs = dict.fromkeys(testconfig.codecs)
     bd_rates_vmaf_codecs = dict.fromkeys(testconfig.codecs)
@@ -255,7 +255,7 @@ def calculate_bd_rate(testconfig: TestConfig, results, plotconfig: PlotConfig, b
         "_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv"
 
 
-    metrics = plotconfig.metrics_str
+    metrics = resultconfig.metrics_str
     
     for codec in results_codecs:
         results_codecs[codec] = []
@@ -307,11 +307,11 @@ def calculate_bd_rate(testconfig: TestConfig, results, plotconfig: PlotConfig, b
                     elif metric == "PSNR_HVS":
                         bd_rates_psnr_hvs_codecs[test_codec].append(bd_rate)
         if metric == "VMAF":
-            print_bd_rates(bd_rates_vmaf_codecs, "VMAF", testconfig, plotconfig, bd_filename, bd_psnr)
+            print_bd_rates(bd_rates_vmaf_codecs, "VMAF", testconfig, resultconfig, bd_filename, bd_psnr)
         elif metric == "SSIM":
-            print_bd_rates(bd_rates_ssim_codecs, "SSIM", testconfig, plotconfig, bd_filename, bd_psnr)
+            print_bd_rates(bd_rates_ssim_codecs, "SSIM", testconfig, resultconfig, bd_filename, bd_psnr)
         elif metric == "PSNR_HVS":
-            print_bd_rates(bd_rates_psnr_hvs_codecs, "PSNR_HVS", testconfig, plotconfig, bd_filename, bd_psnr)
+            print_bd_rates(bd_rates_psnr_hvs_codecs, "PSNR_HVS", testconfig, resultconfig, bd_filename, bd_psnr)
 
 
 def calculate_vmaf_scores(fInfo: FileInfo, codecs, results, verbose=False):
