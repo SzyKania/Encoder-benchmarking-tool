@@ -120,7 +120,7 @@ def decode_encoded_videos(basename, codecs, verbose=False):
         else:
             encoded_extension = '.mp4'
         encoded_filename = ".\\encoded_videos\\" + encoded_basename + encoded_extension
-        decoded_filename = ".\\decoded_videos\\" + encoded_basename + '.yuv'
+        decoded_filename = ".\\decoded_videos\\" + encoded_basename + '.y4m'
         ffargs = ['ffmpeg', '-hide_banner', '-y',
                   '-i', encoded_filename,  decoded_filename]
         proc = subprocess.run(ffargs, stderr=subprocess.PIPE, text=True)

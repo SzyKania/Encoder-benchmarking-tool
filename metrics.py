@@ -13,7 +13,6 @@ from configs.test_config import TestConfig
 from file_operations import FileInfo
 from configs.result_config import ResultConfig
 
-
 class VMAFScores:
     def __init__(self, codec, ssim, psnr_hvs, vmaf):
         self.codec = codec
@@ -245,6 +244,7 @@ def print_bd_rates(bd_rates_metric_codecs, metric, testconfig, resultconfig: Res
                 print(codec, *[bd_rate if bd_rate=="X" else "{0:0.02f}%".format(bd_rate)for bd_rate in bd_rates_metric_codecs[codec]], sep=";", file=f)
             print(file=f)
 
+
 def calculate_bd_rate(testconfig: TestConfig, results, resultconfig: ResultConfig, bd_psnr = False):
 
     results_codecs = dict.fromkeys(testconfig.codecs)
@@ -317,28 +317,32 @@ def calculate_bd_rate(testconfig: TestConfig, results, resultconfig: ResultConfi
 def calculate_vmaf_scores(fInfo: FileInfo, codecs, results, verbose=False):
     vmaf_scores = {}
 
-    print('Converting sequence to yuv format for VMAF')
-    raw_filepath = "..\\..\\test_sequences\\" + fInfo.filename
-    ffargs = ['ffmpeg', '-hide_banner', '-y', '-i', raw_filepath, '.\\'+fInfo.basename+'.yuv']
-    proc = subprocess.run(ffargs, stderr=subprocess.PIPE, text=True)
-    if verbose:
-        print(proc.stderr)
+    # print('Converting sequence to yuv format for VMAF')
+    # raw_filepath = "..\\..\\test_sequences\\" + fInfo.filename
+    # ffargs = ['ffmpeg', '-hide_banner', '-y', '-i', raw_filepath, '.\\'+fInfo.basename+'.yuv']
+    # proc = subprocess.run(ffargs, stderr=subprocess.PIPE, text=True)
+    # if verbose:
+    #     print(proc.stderr)
+    #
+    #Legacy code, vmaf gets buggy if both reference and distorted are not in the same format,
+    #even when resolution, pix_fmt and bit depth are supplied for the yuv video.
+    #Since most test sequences are shared in y4m format this was deprecated.
 
     for codec in codecs:
         print('Calculating metrics of sequence encoded by', codec)
 
         vmaf_scores[codec] = None
-        decoded_filename = ".\\decoded_videos\\" + fInfo.basename + "_" + codec + '.yuv'
+        decoded_filename = ".\\decoded_videos\\" + fInfo.basename + "_" + codec + '.y4m'
         log_path = './libvmaf_logs/' + fInfo.basename + "_" + codec + '.xml'
 
-        if fInfo.pixel_format == 'yuv420p':
-            pix_fmt = '420'
-            bit_depth = '8'
-        elif fInfo.pixel_format == 'yuv420p10le':
-            pix_fmt = '420'
-            bit_depth = '10'
-        vmafargs = ['vmaf', '-r', '.\\'+fInfo.basename+'.yuv', '-d', decoded_filename,
-                    '-w', fInfo.width, '-h', fInfo.height, '-p', pix_fmt, '-b', bit_depth,
+        # if fInfo.pixel_format == 'yuv420p':
+        #     pix_fmt = '420'
+        #     bit_depth = '8'
+        # elif fInfo.pixel_format == 'yuv420p10le':
+        #     pix_fmt = '420'
+        #     bit_depth = '10'
+        vmafargs = ['vmaf', '-r', '..\\..\\test_sequences\\'+fInfo.basename+'.y4m', '-d', decoded_filename,
+                    # '-w', fInfo.width, '-h', fInfo.height, '-p', pix_fmt, '-b', bit_depth,
                     '--feature', 'float_ssim', '--feature', 'psnr_hvs',  # '--feature', 'psnr', '--feature', 'float_ms_ssim',
                     '--threads', '12', '-q', '-o', log_path]
 
