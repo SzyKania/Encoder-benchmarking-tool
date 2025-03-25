@@ -8,10 +8,10 @@ from bs4 import BeautifulSoup
 import matplotlib.pyplot as plt
 from scipy.interpolate import Akima1DInterpolator
 
-from auxillary import float_round_str, log_ssim, log_vmaf
-from configs.test_config import TestConfig
 from file_operations import FileInfo
+from configs.test_config import TestConfig
 from configs.result_config import ResultConfig
+from auxillary import float_round_str, log_ssim, log_vmaf
 
 class VMAFScores:
     def __init__(self, codec, ssim, psnr_hvs, vmaf):
@@ -29,6 +29,24 @@ class VMAFScores:
             " SSIM: " + float_round_str(self.ssim, 3) +\
             " PSNR_HVS: " + float_round_str(self.psnr_hvs, 5) +\
             " VMAF: " + float_round_str(self.vmaf, 3)
+    
+
+class FilesAggregatedResults:
+    def __init__(self, codec, rtime_avg, vmaf_avg, bitrate_avg, crf, psnr_hvs = None, ssim_avg = None, frametime_avg = None):
+        self.codec = codec
+        self.crf = crf
+        self.rtime_avg = rtime_avg
+        self.vmaf_avg = vmaf_avg
+        self.ssim_avg = ssim_avg
+        self.psnr_hvs_avg = psnr_hvs
+        self.bitrate_avg = bitrate_avg
+        self.frametime_avg = frametime_avg
+    def __str__(self):
+        fstrings = {'s1': self.codec.ljust(10), 's2': self.crf, 's3': round(self.bitrate_avg, 2),
+                     's4': round(self.vmaf_avg, 2), 's5': round(self.rtime_avg, 2),
+                       's6': round(self.psnr_hvs_avg), 's7': round(self.ssim_avg), 's8': self.frametime_avg}
+        return "Codec: {s1} Crf: {s2}\tBitrate_avg: {s3}\tVmaf_avg: {s4}\tRtime_avg: {s5}\t\
+                PSNR_HVS_avg: {s6}\tSSIM_avg: {s7}\t Frametime_avg: {s8}".format(**fstrings)
 
 
 def plot_results(results_bitrates, codecs, filename, resultconfig: ResultConfig, cpu_only=True, show_annotations=False):
@@ -122,9 +140,9 @@ def plot_frametime_aggregated_results(aggregated_crfs_results, codecs):
     fig, ax = plt.subplots(figsize=(9.75, 4.5))
 
     for i, codec in enumerate(codecs):
-        print("brs[i]:", brs[i])
-        print("codec_frametimes[codec]", codec_frametimes[codec])
-        print("codec:", codec)
+        # print("brs[i]:", brs[i])
+        # print("codec_frametimes[codec]", codec_frametimes[codec])
+        # print("codec:", codec)
         rects = plt.bar(brs[i], codec_frametimes[codec], width = barWidth,
             edgecolor =myedgecolor, label =codec)
         plt.bar_label(rects, padding=3, transform_rotates_text=True)
@@ -141,7 +159,8 @@ def plot_frametime_aggregated_results(aggregated_crfs_results, codecs):
     plt.show()
 
 
-def plot_class_aggregated_results(aggregated_crfs_results, codecs, sequences_class_name,
+def plot_class_aggregated_results(aggregated_crfs_results#: list[FilesAggregatedResults]
+                                  , codecs, sequences_class_name,
                                   resultconfig: ResultConfig, cpu_only=True, show_annotations=False):
     results_codec = {}
     for codec in codecs:
@@ -324,7 +343,7 @@ def calculate_vmaf_scores(fInfo: FileInfo, codecs, results, verbose=False):
     # if verbose:
     #     print(proc.stderr)
     #
-    #Legacy code, vmaf gets buggy if both reference and distorted are not in the same format,
+    #^Legacy code, vmaf gets buggy if both reference and distorted are not in the same format,
     #even when resolution, pix_fmt and bit depth are supplied for the yuv video.
     #Since most test sequences are shared in y4m format this was deprecated.
 
@@ -372,6 +391,7 @@ def print_statistics(results, codecs, vmaf_scores, runs = 1):
     runtime_sums = {}
     frametime_sums = {}
 
+
     for result in results:
         if result.codec not in runtime_sums:
             runtime_sums[result.codec] = float(result.rtime)
@@ -387,12 +407,11 @@ def print_statistics(results, codecs, vmaf_scores, runs = 1):
         frametime_avgs[codec] /= runs
     print()
     print("Average metrics achieved by each encoder:")
-    print(
-        "Codec".ljust(12), "Time [s]".ljust(10), "Time/frame [ms]".ljust(17), "SSIM:".ljust(8), "VMAF:", sep="")
+    print("Codec".ljust(12), "Time [s]".ljust(10), "Time/frame [ms]".ljust(17), "SSIM".ljust(9), "VMAF".ljust(9), "PSNR_HVS", sep="")
     for codec in runtime_avgs:
-        print(codec.ljust(12), float_round_str(runtime_avgs[codec], 4).ljust(10), float_round_str(
-            frametime_avgs[codec], 4).ljust(18), float_round_str(vmaf_scores[codec].ssim, 4).ljust(8),
-             vmaf_scores[codec].vmaf, sep="")
+        print(codec.ljust(12), float_round_str(runtime_avgs[codec], 4).ljust(10), 
+            float_round_str(frametime_avgs[codec], 4).ljust(17), float_round_str(vmaf_scores[codec].ssim, 4).ljust(8),
+            float_round_str(vmaf_scores[codec].vmaf, 4), float_round_str(vmaf_scores[codec].psnr_hvs, 4), sep="")
     print("\n\n")
 
 
@@ -438,3 +457,76 @@ def generate_xlsx_report(basename, framecount, original_filesize, results, vmaf_
     allruns_ws.autofit()
     nonvariables_ws.autofit()
     test_outputs.close()
+
+
+def aggregate_crf_test_batch_results(results_crfs_files, crf_count, codecs):
+
+    codeccount = len(codecs)
+    try:
+        filecount = len(results_crfs_files.keys())
+    except AttributeError as e:
+        print("If loading a singular test for graph generation make sure to set load_single_test in config.")
+        raise e
+
+    all_results = []
+    aggregated_crfs_results = []
+    for i in range(crf_count):
+        aggregated_crfs_results.append([])
+
+    for filename in results_crfs_files:
+        for test_runs in results_crfs_files[filename]:
+            for result in test_runs:
+                all_results.append(result)
+
+    for i in range(crf_count):
+        bitrates_codecs = dict.fromkeys(codecs, 0)
+        vmaf_codecs = dict.fromkeys(codecs, 0)
+        ssim_codecs = dict.fromkeys(codecs, 0)
+        psnr_hvs_codecs = dict.fromkeys(codecs, 0)
+        rtime_codecs = dict.fromkeys(codecs, 0)
+        frametime_codecs = dict.fromkeys(codecs, 0)
+        crf_codecs = dict.fromkeys(codecs, 0)
+
+        for filename in results_crfs_files:#vidyo1, vidyo2...
+            codecs_results = results_crfs_files[filename][i]#[result(264), result265...]
+            for result in codecs_results:#result(264)
+                bitrates_codecs[result.codec] += result.bitrate
+                vmaf_codecs[result.codec] += result.vmaf
+                ssim_codecs[result.codec] += result.ssim
+                psnr_hvs_codecs[result.codec] += result.psnr_hvs
+                rtime_codecs[result.codec] += float(result.rtime)
+                frametime_codecs[result.codec] = result.frametime
+                crf_codecs[result.codec] = result.crf
+
+        for codec in bitrates_codecs:
+            bitrates_codecs[codec] /= filecount
+            vmaf_codecs[codec] /= filecount
+            ssim_codecs[codec] /= filecount
+            psnr_hvs_codecs[codec] /= filecount
+            rtime_codecs[codec] /= filecount
+            frametime_codecs[codec] /= filecount
+
+
+        for codec in bitrates_codecs:
+            aggregated_crfs_results[i].append(FilesAggregatedResults(codec,
+                                                rtime_codecs[codec], vmaf_codecs[codec],
+                                                bitrates_codecs[codec], crf_codecs[codec], psnr_hvs_codecs[codec], ssim_codecs[codec], frametime_codecs[codec]))
+    return aggregated_crfs_results
+
+
+def visualise_results(results_crfs_files, testconfig: TestConfig, resultconfig: ResultConfig):
+    if testconfig.crf_count > 3 and (resultconfig.show_plot or resultconfig.save_plot):
+        for file in testconfig.filenames:
+            plot_results(results_crfs_files[file], testconfig.codecs, file,
+                            resultconfig)
+    acr = aggregate_crf_test_batch_results(results_crfs_files,
+                            testconfig.crf_count, testconfig.codecs)
+    if resultconfig.print_bd_rates or resultconfig.csv_bd_rates:
+        calculate_bd_rate(testconfig, acr, resultconfig)
+
+    if resultconfig.show_plot:
+        plot_frametime_aggregated_results(acr, testconfig.codecs)
+
+        plot_class_aggregated_results(acr, testconfig.codecs, testconfig.test_name, resultconfig)
+
+

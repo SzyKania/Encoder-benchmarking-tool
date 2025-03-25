@@ -1,7 +1,7 @@
 #this file is legacy, the functions work and can be used
 #however during the production of this software libsvtav1 in ffmpeg didnt support crf 2-pass encoding
 #hence svtav1encapp is required to be installed and added to path
-from codec_benchmarking_tool import *
+from encoding import *
 from file_operations import FileInfo
 from metrics import generate_xlsx_report, print_statistics
 import os
