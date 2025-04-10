@@ -2,7 +2,10 @@ import math
 
 
 def float_round_str(float: float, precision: int):  # round and zeropad
-    return str(("%."+str(precision)+"f") % round(float, precision))
+    if float is None:
+        return "None"
+    else:
+        return str(("%."+str(precision)+"f") % round(float, precision))
 
 
 def crf_ints_to_strings(codeccrftables, codec):

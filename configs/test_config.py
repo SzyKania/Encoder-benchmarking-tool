@@ -48,7 +48,7 @@ class TestConfig:
 #region############# GENERAL PARAMETERS ####################
 
 testname = "vidyo"
-filenames = ['vidyo1_720p_60fps.y4m', 'Vidyo3_1280x720p_60fps.y4m']
+filenames = ['vidyo1_720p_60fps.y4m', 'Vidyo3_1280x720p_60fps.y4m']#, 'Vidyo4_1280x720p_60fps.y4m']
 verbosity = False
 encoding_speed = 2 #0 = slowest (vvc slow) 1 = default (vvc fast) 2 = fastest
 runs = 1
@@ -66,15 +66,24 @@ if rate_control_crf:
         'h264_amf':     [10, 15, 20, 24],
         'hevc_amf':     [ 9, 23, 28, 33]
     }
-    codeccrftables = {
-        'libx264':      [31, 24, 17],
-        'libx265':      [30, 25, 17],
-        'libvvenc':     [36, 28, 20],
-        'libvpx-vp9':   [51, 39, 27],
-        'libsvtav1':    [50, 37, 20],
-        'h264_amf':     [15, 20, 24],
-        'hevc_amf':     [23, 28, 33]
-    }
+    # codeccrftables = {
+    #     'libx264':      [31, 24, 17],
+    #     'libx265':      [30, 25, 17],
+    #     'libvvenc':     [36, 28, 20],
+    #     'libvpx-vp9':   [51, 39, 27],
+    #     'libsvtav1':    [50, 37, 20],
+    #     'h264_amf':     [15, 20, 24],
+    #     'hevc_amf':     [23, 28, 33]
+    # }
+    # codeccrftables = {
+    #     'libx264':      [31],
+    #     'libx265':      [30],
+    #     'libvvenc':     [36],
+    #     'libvpx-vp9':   [51],
+    #     'libsvtav1':    [50],
+    #     'h264_amf':     [15],
+    #     'hevc_amf':     [23]
+    # }
 
     crf_count = len(codeccrftables["libx264"])
     target_bitrates = None

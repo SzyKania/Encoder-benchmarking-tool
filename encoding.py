@@ -132,7 +132,7 @@ def run_tests_crf(fInfo: FileInfo, codecs, codecargs, verbosity, resultconfig: R
     decode_encoded_videos(fInfo.basename, codecs, verbose=verbosity)
 
     print("Calculating metrics of encoded materials")
-    vmaf_scores = calculate_vmaf_scores(fInfo, codecs, results, verbose=verbosity)
+    vmaf_scores = calculate_vmaf_scores(fInfo, codecs, results, resultconfig, verbose=verbosity)
 
     print_statistics(results, codecs, vmaf_scores)
 

@@ -16,9 +16,9 @@ from auxillary import float_round_str, log_ssim, log_vmaf
 class VMAFScores:
     def __init__(self, codec, ssim, psnr_hvs, vmaf):
         self.codec = codec
-        self.ssim = float(ssim)
-        self.psnr_hvs = float(psnr_hvs)
-        self.vmaf = float(vmaf)
+        self.ssim = None if ssim is None else float(ssim)
+        self.psnr_hvs = None if psnr_hvs is None else float(psnr_hvs)
+        self.vmaf = None if vmaf is None else float(vmaf)
 
     def get_scores(self):
         return self.ssim, self.psnr_hvs, self.vmaf
@@ -333,19 +333,8 @@ def calculate_bd_rate(testconfig: TestConfig, results, resultconfig: ResultConfi
             print_bd_rates(bd_rates_psnr_hvs_codecs, "PSNR_HVS", testconfig, resultconfig, bd_filename, bd_psnr)
 
 
-def calculate_vmaf_scores(fInfo: FileInfo, codecs, results, verbose=False):
+def calculate_vmaf_scores(fInfo: FileInfo, codecs, results, resultconfig: ResultConfig, verbose=False):
     vmaf_scores = {}
-
-    # print('Converting sequence to yuv format for VMAF')
-    # raw_filepath = "..\\..\\test_sequences\\" + fInfo.filename
-    # ffargs = ['ffmpeg', '-hide_banner', '-y', '-i', raw_filepath, '.\\'+fInfo.basename+'.yuv']
-    # proc = subprocess.run(ffargs, stderr=subprocess.PIPE, text=True)
-    # if verbose:
-    #     print(proc.stderr)
-    #
-    #^Legacy code, vmaf gets buggy if both reference and distorted are not in the same format,
-    #even when resolution, pix_fmt and bit depth are supplied for the yuv video.
-    #Since most test sequences are shared in y4m format this was deprecated.
 
     for codec in codecs:
         print('Calculating metrics of sequence encoded by', codec)
@@ -354,16 +343,15 @@ def calculate_vmaf_scores(fInfo: FileInfo, codecs, results, verbose=False):
         decoded_filename = ".\\decoded_videos\\" + fInfo.basename + "_" + codec + '.y4m'
         log_path = './libvmaf_logs/' + fInfo.basename + "_" + codec + '.xml'
 
-        # if fInfo.pixel_format == 'yuv420p':
-        #     pix_fmt = '420'
-        #     bit_depth = '8'
-        # elif fInfo.pixel_format == 'yuv420p10le':
-        #     pix_fmt = '420'
-        #     bit_depth = '10'
         vmafargs = ['vmaf', '-r', '..\\..\\test_sequences\\'+fInfo.basename+'.y4m', '-d', decoded_filename,
-                    # '-w', fInfo.width, '-h', fInfo.height, '-p', pix_fmt, '-b', bit_depth,
-                    '--feature', 'float_ssim', '--feature', 'psnr_hvs',  # '--feature', 'psnr', '--feature', 'float_ms_ssim',
                     '--threads', '12', '-q', '-o', log_path]
+        
+        if resultconfig.include_psnr_hvs:
+            vmafargs.extend(['--feature', 'psnr_hvs'])
+        
+        if resultconfig.include_ssim:
+            vmafargs.extend(['--feature', 'float_ssim'])
+
 
         proc = subprocess.run(vmafargs, stdout=subprocess.PIPE, text=True)
         if verbose:
@@ -373,17 +361,25 @@ def calculate_vmaf_scores(fInfo: FileInfo, codecs, results, verbose=False):
             data = f.read()
         Bs_data = BeautifulSoup(data, "xml")
 
-        ssim = Bs_data.find('metric', {'name': 'float_ssim'}).get('mean')
-        psnr_hvs = Bs_data.find('metric', {'name': 'psnr_hvs'}).get('mean')
+        if resultconfig.include_ssim:
+            ssim = Bs_data.find('metric', {'name': 'float_ssim'}).get('mean')
+        else:
+            ssim = None
+
+        if resultconfig.include_psnr_hvs:
+            psnr_hvs = Bs_data.find('metric', {'name': 'psnr_hvs'}).get('mean')
+        else:
+            psnr_hvs = None
+        
         vmaf = Bs_data.find('metric', {'name': 'vmaf'}).get('mean')
 
         vmaf_scores[codec] = VMAFScores(codec, ssim, psnr_hvs, vmaf)
+
     for codec in vmaf_scores:
         for result in results:
             if result.codec == codec:
                 result.set_scores(*vmaf_scores[codec].get_scores())
                 break
-        # print(result)
     return vmaf_scores
 
 
@@ -410,8 +406,8 @@ def print_statistics(results, codecs, vmaf_scores, runs = 1):
     print("Codec".ljust(12), "Time [s]".ljust(10), "Time/frame [ms]".ljust(17), "SSIM".ljust(9), "VMAF".ljust(9), "PSNR_HVS", sep="")
     for codec in runtime_avgs:
         print(codec.ljust(12), float_round_str(runtime_avgs[codec], 4).ljust(10), 
-            float_round_str(frametime_avgs[codec], 4).ljust(17), float_round_str(vmaf_scores[codec].ssim, 4).ljust(8),
-            float_round_str(vmaf_scores[codec].vmaf, 4), float_round_str(vmaf_scores[codec].psnr_hvs, 4), sep="")
+            float_round_str(frametime_avgs[codec], 4).ljust(17), float_round_str(vmaf_scores[codec].ssim, 4).ljust(9),
+            float_round_str(vmaf_scores[codec].vmaf, 4).ljust(9), float_round_str(vmaf_scores[codec].psnr_hvs, 4), sep="")
     print("\n\n")
 
 
@@ -492,17 +488,35 @@ def aggregate_crf_test_batch_results(results_crfs_files, crf_count, codecs):
             for result in codecs_results:#result(264)
                 bitrates_codecs[result.codec] += result.bitrate
                 vmaf_codecs[result.codec] += result.vmaf
-                ssim_codecs[result.codec] += result.ssim
-                psnr_hvs_codecs[result.codec] += result.psnr_hvs
                 rtime_codecs[result.codec] += float(result.rtime)
                 frametime_codecs[result.codec] = result.frametime
                 crf_codecs[result.codec] = result.crf
+        
+        if results_crfs_files[filename][i][0].ssim is not None:
+            for filename in results_crfs_files:
+                codecs_results = results_crfs_files[filename][i]
+                for result in codecs_results:
+                    ssim_codecs[result.codec] += result.ssim
+            for codec in bitrates_codecs:
+                ssim_codecs[codec] /= filecount
+        else:
+            for codec in bitrates_codecs:
+                ssim_codecs[codec] = None
+
+        if results_crfs_files[filename][i][0].psnr_hvs is not None:
+            for filename in results_crfs_files:
+                codecs_results = results_crfs_files[filename][i]
+                for result in codecs_results:
+                    psnr_hvs_codecs[result.codec] += result.psnr_hvs
+            for codec in bitrates_codecs:
+                psnr_hvs_codecs[codec] /= filecount
+        else:
+            for codec in bitrates_codecs:
+                psnr_hvs_codecs[codec] = None
 
         for codec in bitrates_codecs:
             bitrates_codecs[codec] /= filecount
             vmaf_codecs[codec] /= filecount
-            ssim_codecs[codec] /= filecount
-            psnr_hvs_codecs[codec] /= filecount
             rtime_codecs[codec] /= filecount
             frametime_codecs[codec] /= filecount
 
